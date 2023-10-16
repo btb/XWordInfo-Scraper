@@ -5,26 +5,71 @@ import random
 from bs4 import BeautifulSoup
 from pprint import pprint
 
-def scrape(min_year=1942, max_year=2023):
-    months = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'}
-    days = {1: 31, 2: 29, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
+months = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'}
+days = {1: 31, 2: 29, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
 
-    if not os.path.exists('nyt-cw'):
-        os.mkdir('nyt-cw')
-    os.chdir('nyt-cw')
-    
+def get_clue_numbers(grid):
+	# grid expected to be a list of strings like 'XXXXX.XXXX.XXXX'
+	# where . indicates a black square
+	down = []
+	#pprint(grid)
+	across = []
+	number = 1
+	increment_number = False
+	for y in range(len(grid)):
+		for x in range(len(grid[0])):  # assumes it's a rectangle, not necessarily square
+			if grid[y][x] != '.':
+				if (x == 0 and grid[y][1] != '.') or (grid[y][x-1] == '.' and not (x == len(grid[0])-1 or grid[y][x+1] == '.')):
+					# makes sure it's not a one-letter gap, since those don't get clued
+					across.append(number)
+					increment_number = True
+				if (y == 0 and grid[1][x] != '.') or (grid[y-1][x] == '.' and not (y == len(grid)-1 or grid[y+1][x] == '.')):
+					down.append(number)
+					increment_number = True
+			if increment_number:
+				number += 1
+				increment_number = False
+	return {'across': across, 'down': down}
+
+def scrape_and_puz(min_year=1942, max_year=1993, overwrite=[False, False], puz_only = True):
+    h_path = 'nyt-cw/'
+    p_path = 'nyt-puz/'
+    fail_list = []
+    if not os.path.exists(h_path):
+        os.mkdir(h_path)
+    if not os.path.exists(p_path):
+        os.mkdir(p_path)
     for y in range(min_year, max_year+1):
-        if not os.path.exists(f'{y}'):
-            os.mkdir(f'{y}')
-        os.chdir(f'{y}')    
+        print(y)
+        h_path += f'{y}/'
+        p_path += f'{y}/'
+        if not os.path.exists(h_path):
+            os.mkdir(h_path)
+        if not os.path.exists(p_path):
+            os.mkdir(p_path)
         for m in range(1, 13):
-            if not os.path.exists(f'{m:0>2}'):
-                os.mkdir(f'{m:0>2}')
-            os.chdir(f'{m:0>2}')    
-            for d in range(1, 32): #days[m]+1):
-                filename = f'{months[m]}{d:0>2}{y%100:0>2}.html'
-                if os.path.exists(filename):
+            h_path += f'{m:0>2}/'
+            p_path += f'{m:0>2}/'
+            if not os.path.exists(h_path):
+                os.mkdir(h_path)    
+            if not os.path.exists(p_path):
+                os.mkdir(p_path)    
+            for d in range(1, days[m]+1):
+                filename = h_path+f'{months[m]}{d:0>2}{y%100:0>2}.html'
+                p_name = p_path+f'{months[m]}{d:0>2}{y%100:0>2}.puz'
+                if os.path.exists(filename) and not overwrite[0]:
+                    with open(filename, 'r') as f:
+                        text = f.read()
+                        #if 'pdf' in text[text.find('FAQ')+1:]:
+                        #    print(filename)
     #                print('already done')
+                    if not os.path.exists(p_name) or overwrite[1]:
+                        try:
+                            build_puz(parse(filename), p_name)
+                        except (ValueError, AttributeError, IndexError):
+                            print(f'{filename} did not work')
+                    continue
+                if puz_only:
                     continue
                 print(filename)
                 URL = f'https://www.xwordinfo.com/PS?date={m}/{d}/{y}'
@@ -42,10 +87,19 @@ def scrape(min_year=1942, max_year=2023):
                     continue
                 with open(filename, 'w') as file:
                     file.write(page.text)
-                    print('saved')
-            os.chdir('..')
-        os.chdir('..')
-    os.chdir('..')
+                    #print('saved')
+                try:
+                    build_puz(parse(filename), p_name)
+                except (ValueError, AttributeError, IndexError):
+                    print(filename)
+                    fail_list.append(filename)
+                #print('puz')
+            h_path = h_path[:-3]
+            p_path = p_path[:-3]
+        h_path = h_path[:-5]
+        p_path = p_path[:-5]
+    return fail_list
+
 
 def checksum(start_bit, length, initial, array):
     cksum = initial
@@ -62,7 +116,19 @@ sample = bytearray(b'\x15\x15\x96\x00\x01\x00\x00\x00')
 
 def parse(filename):
     with open(filename, 'r') as file:
-        soup = BeautifulSoup(file.read(), "html.parser")
+        text = file.read()
+        replacements = {'\x95':'\xef', '\x87':'‡', '&#x1F497;':'[heart]', '&hearts;':'[heart]', '\u2764':'[heart]', '\u2665':'[heart]', '\ufe0f':'',
+                        '&diams;':'[diamond]', '\u2666':'[diamond]', '&spades;':'[spade]', '\u2660':'[spade]', '&clubs;':'[club]', '\u2663':'[club]',
+                        '\x82':'\xe2', '\x92':'?', '':'/', '':'\xe9', '&pi;':'[pi]', 'π':'[pi]', '&#9794;':'[male]', '&#9792;':'[female]',
+                        '&Omega;':'[omega]', '&Sigma;':'[sigma]', '\u010d':'c', '\u02bb':"'", '∨':'||', '∧':'&', '¬':'~', '&sim;':'~', 'Đ':'D', 'ặ':'a',
+                        'ắ':'a', '→':'->', 'ř':'r', '&#128308;':'[red dot]', '&#128993;':'[yellow dot]', '&#128994;':'[green dot]', '&#128309;':'[blue dot]',
+                        '&#9899;':'[black dot]', '\u2639':':(', '&#x1F602;':'[crying laughing emoji]', '\U0001f602':'[crying laughing emoji]',
+                        '\u03a3':'[sigma]', '&rarr;':'->', '&larr;':'<-', '&flat;':'b', '&#x1f913;':'[smiley face with glasses]', '&cup;':'[union]',
+                        '&cap;':'[intersection]', '&#10004;':'[check]', '&check;':'[check]', '&#x2713;':'[check]', '&uarr;':'^', '&darr;':'v',
+                        '&Theta;':'[Theta]', '&radic;':'[radical]'}
+        for k, v in replacements.items():
+            text = text.replace(k, v)
+        soup = BeautifulSoup(text, "html.parser")
 
     components = {'filename': filename[:filename.rfind('.')]} # TODO: decide if I need the subfolders
 
@@ -79,14 +145,18 @@ def parse(filename):
                 grid.append(row)
             row = '' # separating rows make grids human-readable, for debugging
         cl = square.get("class") or 'None'
-        if cl[0] == "black":
+        if cl[0] == "black" or cl[0] == "shape":
             row += '.'
         else:
             if cl != 'None' and cl[0] in ["shade", "bigcircle"]:
                 circled.add(i) # used in the GEXT section
+                #print(square)
+            if cl[0] == "plot":
+                continue
             try:
                 text = square.find(class_="letter").text
             except AttributeError:
+                #print(square)
                 text = square.text[len(square.find(class_="num").text):]
                 if text not in rebuses:
                     rebuses[text] = [i] # rebuses are combined if repeated, will deal with that in the 'GRBS' (grid rebus) and 'RTBL' (rebus table)
@@ -95,7 +165,17 @@ def parse(filename):
             try:
                 row += text[0]
             except IndexError:
-                raise ValueError("empty cell")
+                try:
+                    text = square['style']
+                    text = text[text.rfind(':')+1:-1]
+                    if text not in rebuses:
+                        rebuses[text] = [i]
+                    else:
+                        rebuses[text].append(i)
+                    row += text[0]
+
+                except:
+                    raise ValueError("empty cell")
     grid.append(row)
 
     components['grid'] = grid
@@ -104,12 +184,21 @@ def parse(filename):
     components['copyright'] = soup.find(id="CPHContent_Copyright").text
     # components['notes'] = soup.find(id="CPHContent_NotesPan").text.strip() # TODO: maybe dynamically check whether they reference a PDF/alt PUZ
     # this broader version ^ kept too much, often including spoilers. TODO: look into a better way to save these editor notes?
-    notes = soup.find(class_="notepad").text.strip()
-    if notes.startswith('Notepad: '):
-        notes = notes[len('Notepad: '):]
+    try:
+        notes = soup.find(class_="notepad").text.strip()
+        if notes.startswith('Notepad: '):
+            notes = notes[len('Notepad: '):]
+    except AttributeError:
+        notes = ''
     components['notes'] = notes
-    
-    author = soup.find(id="CPHContent_AEGrid").text.strip()
+        
+    try:
+        author = soup.find(id="CPHContent_AEGrid").text.strip()
+    except AttributeError:
+        try:
+            author = soup.find(class_="aegrid").text.strip()
+        except:
+            author = 'Author: Unknown'
     author = author[len('Author:'):]
     author = author.replace('\nEditor:', ' / ')
     components['author'] = author
@@ -118,26 +207,75 @@ def parse(filename):
     except AttributeError:
         title = soup.find(id="PuzTitle").text
     components['title'] = title.replace("New York", "NY")
-
+    
     clues = {'across':{}, 'down': {}}
-
-    across = soup.find(id="ACluesPan").find(class_="numclue").find_all("div")
+    uniclue = False
+    clue_nums = get_clue_numbers(grid)
+    if soup.find(class_="clueshead").text == 'Clues':
+        # means we have a "Uniclue" puzzle, so Clue 1 is for 1A and 1D (assuming they exist)
+        # so we need to figure out which clues actually exist in our puzzle
+        uniclue = True
+    try:
+        across = soup.find(id="ACluesPan").find(class_="numclue").find_all("div")
+    except AttributeError:
+        across = soup.find(id="CPHContent_ACluesPan").find(class_="numclue").find_all("div")
+    across_check = []
+    down_check = []
     i = 0
     while i < len(across):
         clue_num = int(across[i].text) # not sure if I want str or int for this
-        clue_text = across[i+1].text
-        clue_text = clue_text[:clue_text.rfind(':')-1]
-        clues['across'][clue_num] = clue_text
+        if not uniclue or clue_num in clue_nums['across']:
+            clue_text = across[i+1].text
+            clue_text = clue_text[:clue_text.rfind(':')-1]
+            clues['across'][clue_num] = clue_text
+            across_check.append(clue_num)
+        if uniclue and clue_num in clue_nums['down']:
+            clue_text = across[i+1].text
+            clue_text = clue_text[:clue_text.rfind(':')-1]
+            clues['down'][clue_num] = clue_text
+            down_check.append(clue_num)
         i += 2
-
-    down = soup.find(id="DCluesPan").find(class_="numclue").find_all("div")
-    i = 0
-    while i < len(down):
-        clue_num = int(down[i].text) # not sure if I want str or int for this
-        clue_text = down[i+1].text
-        clue_text = clue_text[:clue_text.rfind(':')-1]
-        clues['down'][clue_num] = clue_text
-        i += 2
+    if not uniclue:
+        try:
+            down = soup.find(id="DCluesPan").find(class_="numclue").find_all("div")
+        except AttributeError:
+            down = soup.find(id="CPHContent_DCluesPan").find(class_="numclue").find_all("div")
+        i = 0
+        while i < len(down):
+            clue_num = int(down[i].text) # not sure if I want str or int for this
+            clue_text = down[i+1].text
+            clue_text = clue_text[:clue_text.rfind(':')-1]
+            clues['down'][clue_num] = clue_text
+            down_check.append(clue_num)
+            i += 2
+    #check whether clues we read actually match the grid
+    if len(across_check) != len(set(across_check)) or len(down_check) != len(set(down_check)):
+        print(across_check, down_check)
+        raise IndexError("Duplicate clues")
+    across_check = set(across_check)
+    down_check = set(down_check)
+    if across_check != clues['across'].keys() or down_check != clues['down'].keys():
+        print(across_check, down_check, clues)
+        raise IndexError("Clues don't match grid")
+    if across_check != set(clue_nums['across']) or down_check != set(clue_nums['down']):
+        # If the grid has extra clues that it shouldn't, that should be dealt with by hand (very situational)
+        extra = ', '.join([f'{x}A' for x in across_check if x not in clue_nums['across']] + [f'{x}D' for x in down_check if x not in clue_nums['down']])
+        if extra:
+#            print(extra)
+            print(clues)
+            print(clue_nums)
+            pprint(grid)
+            raise IndexError("Grid missing included clues")
+        # If it's just missing clues, you can basically always just ignore them (standard is to put a '-')
+        else:
+            for a in clue_nums['across']:
+                if a not in clues['across']:
+                    clues['across'][a] = '-'
+            for d in clue_nums['down']:
+                if d not in clues['down']:
+                    clues['down'][d] = '-'
+            print(f'{filename} was missing clues and was filled in automatically')
+        
 
     components['clues'] = clues
     components['num_clues'] = len(components['clues']['across'])+len(components['clues']['down'])
@@ -158,13 +296,17 @@ def checksum(start_bit:int, length:int, initial, array:bytearray):
 # sample = bytearray(b'\x15\x15\x96\x00\x01\x00\x00\x00')
 # print(checksum(0, 8, 0, sample)) #should get b'\x05\x4E' or b'\x05N'
 
-def build_puz(components):
+def build_puz(components, save_to=None, verbose=False):
+    if not save_to:
+        save_to = components['filename']+'.puz'
+        save_to = save_to.replace('cw', 'puz')
+        print(save_to)
     output = bytearray(2)
     output.extend([ord(c) for c in 'ACROSS&DOWN\0'])
     output.extend(bytearray(10)) # this and the previous empty space are reserved for checksums
     output.extend(bytearray('1.3\0', encoding='windows-1252'))
     output.extend(bytearray(16)) # hard-coded this later
-    output.extend([components['length'], components['width']])
+    output.extend([components['width'], components['length']])
     output.extend(components['num_clues'].to_bytes(2, 'little'))
     output.extend(b'\x01\x00\x00\x00') # more magic numbers? plus more unused scramble
 
@@ -185,10 +327,14 @@ def build_puz(components):
     down = components['clues']['down']
 
     for n in range(1, max(max(across), max(down))+1):
+        if verbose:
+            print(n)
         if n in across:
+#            print(across[n])
             output.extend(bytes(across[n]+'\0', encoding="windows-1252"))
             partial_board += across[n]
         if n in down:
+#            print(down[n])
             output.extend(bytes(down[n]+'\0', encoding="windows-1252"))
             partial_board += down[n]
     output.extend(bytes(components['notes']+'\0', encoding="windows-1252"))
@@ -255,16 +401,18 @@ def build_puz(components):
     temp = checksum(0x2c, 8+size*2, 0, output)
     output[:2] = checksum(0, len(partial_board), int.from_bytes(temp, byteorder="little"), partial_board)
     
-    with open(components['filename']+'.puz', 'wb') as file: # note that filename currently includes the directory structure
+    with open(save_to, 'wb') as file: # note that save_to includes the directory structure
         file.write(output)
-        print(components['filename']+'.puz'+' done')
+        #print(components['filename']+'.puz'+' done')
     return(output, partial_board)
 
-#scrape()
+fails = scrape_and_puz(2023, 2024, overwrite = [False, False], puz_only = False)
+print(fails)
 
-components = parse('nyt-cw/1994/04/Apr0394.html')
+#components = parse('nyt-cw/2012/09/Sep0612.html')
+#print(components['grid'])
     
-output, partial = build_puz(components)
+#output, partial = build_puz(components, verbose=True)
 
 #for i in range(0x2c, len(output)):
 #    for j in range(i, len(output)):
