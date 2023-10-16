@@ -6,13 +6,12 @@ from bs4 import BeautifulSoup
 from pprint import pprint
 
 months = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'}
-days = {1: 31, 2: 29, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31}
+days = {1: 31, 2: 29, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31} # TODO: use standard datetime format to avoid this nonsense
 
 def get_clue_numbers(grid):
 	# grid expected to be a list of strings like 'XXXXX.XXXX.XXXX'
 	# where . indicates a black square
 	down = []
-	#pprint(grid)
 	across = []
 	number = 1
 	increment_number = False
@@ -60,9 +59,6 @@ def scrape_and_puz(min_year=1942, max_year=1993, overwrite=[False, False], puz_o
                 if os.path.exists(filename) and not overwrite[0]:
                     with open(filename, 'r') as f:
                         text = f.read()
-                        #if 'pdf' in text[text.find('FAQ')+1:]:
-                        #    print(filename)
-    #                print('already done')
                     if not os.path.exists(p_name) or overwrite[1]:
                         try:
                             build_puz(parse(filename), p_name)
@@ -103,7 +99,6 @@ def scrape_and_puz(min_year=1942, max_year=1993, overwrite=[False, False], puz_o
 
 def checksum(start_bit, length, initial, array):
     cksum = initial
-
     for i in range(length):
         if cksum & 1:
             cksum = (cksum>>1) + 0x8000
@@ -130,7 +125,7 @@ def parse(filename):
             text = text.replace(k, v)
         soup = BeautifulSoup(text, "html.parser")
 
-    components = {'filename': filename[:filename.rfind('.')]} # TODO: decide if I need the subfolders
+    components = {'filename': filename[:filename.rfind('.')]}
 
     squares = soup.find(id="PuzTable").find_all("td")
     components['width'] = len(soup.find(id="PuzTable").find("tr").find_all("td"))
@@ -143,14 +138,13 @@ def parse(filename):
         if i % components['width'] == 0:
             if i != 0:
                 grid.append(row)
-            row = '' # separating rows make grids human-readable, for debugging
+            row = '' # separating rows makes grids more human-readable, for debugging
         cl = square.get("class") or 'None'
         if cl[0] == "black" or cl[0] == "shape":
             row += '.'
         else:
             if cl != 'None' and cl[0] in ["shade", "bigcircle"]:
-                circled.add(i) # used in the GEXT section
-                #print(square)
+                circled.add(i) # used in the 'GEXT' section
             if cl[0] == "plot":
                 continue
             try:
@@ -223,7 +217,7 @@ def parse(filename):
     down_check = []
     i = 0
     while i < len(across):
-        clue_num = int(across[i].text) # not sure if I want str or int for this
+        clue_num = int(across[i].text)
         if not uniclue or clue_num in clue_nums['across']:
             clue_text = across[i+1].text
             clue_text = clue_text[:clue_text.rfind(':')-1]
@@ -261,12 +255,11 @@ def parse(filename):
         # If the grid has extra clues that it shouldn't, that should be dealt with by hand (very situational)
         extra = ', '.join([f'{x}A' for x in across_check if x not in clue_nums['across']] + [f'{x}D' for x in down_check if x not in clue_nums['down']])
         if extra:
-#            print(extra)
             print(clues)
             print(clue_nums)
             pprint(grid)
             raise IndexError("Grid missing included clues")
-        # If it's just missing clues, you can basically always just ignore them (standard is to put a '-')
+        # If it's just missing clues, you can basically always ignore them (standard is to put a '-')
         else:
             for a in clue_nums['across']:
                 if a not in clues['across']:
@@ -293,9 +286,6 @@ def checksum(start_bit:int, length:int, initial, array:bytearray):
         cksum = cksum & 0x0FFFF
     return cksum.to_bytes(2, 'little')
 
-# sample = bytearray(b'\x15\x15\x96\x00\x01\x00\x00\x00')
-# print(checksum(0, 8, 0, sample)) #should get b'\x05\x4E' or b'\x05N'
-
 def build_puz(components, save_to=None, verbose=False):
     if not save_to:
         save_to = components['filename']+'.puz'
@@ -315,7 +305,6 @@ def build_puz(components, save_to=None, verbose=False):
     for line in components['grid']:
         output.extend(bytes(line, encoding='windows-1252'))
     for line in components['grid']:
-        # ord('.') == 
         output.extend([45 + (c=='.') for c in line]) # empty grid, 45 for white squares, 46 for black
     for string in [components['title'], components['author'], components['copyright']]:
         output.extend(bytes(string+'\0', encoding='windows-1252')) #.replace(b'\xc2\xa9', b'\xa9'))
@@ -330,15 +319,12 @@ def build_puz(components, save_to=None, verbose=False):
         if verbose:
             print(n)
         if n in across:
-#            print(across[n])
             output.extend(bytes(across[n]+'\0', encoding="windows-1252"))
             partial_board += across[n]
         if n in down:
-#            print(down[n])
             output.extend(bytes(down[n]+'\0', encoding="windows-1252"))
             partial_board += down[n]
     output.extend(bytes(components['notes']+'\0', encoding="windows-1252"))
-#    partial_board += '\0'
     if components['notes'] != '':
         partial_board += (components['notes']+'\0')
 
@@ -403,19 +389,6 @@ def build_puz(components, save_to=None, verbose=False):
     
     with open(save_to, 'wb') as file: # note that save_to includes the directory structure
         file.write(output)
-        #print(components['filename']+'.puz'+' done')
     return(output, partial_board)
 
 fails = scrape_and_puz(2023, 2024, overwrite = [False, False], puz_only = False)
-print(fails)
-
-#components = parse('nyt-cw/2012/09/Sep0612.html')
-#print(components['grid'])
-    
-#output, partial = build_puz(components, verbose=True)
-
-#for i in range(0x2c, len(output)):
-#    for j in range(i, len(output)):
-#        test = checksum(i, j-i, 0, output)
-#        if test == b'\xf4\x2b':
-#            print(i, j)
