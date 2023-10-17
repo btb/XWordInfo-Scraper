@@ -4,9 +4,7 @@ import time
 import random
 from bs4 import BeautifulSoup
 from pprint import pprint
-
-months = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'}
-days = {1: 31, 2: 29, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31} # TODO: use standard datetime format to avoid this nonsense
+from datetime import date, timedelta
 
 def get_clue_numbers(grid):
 	# grid expected to be a list of strings like 'XXXXX.XXXX.XXXX'
@@ -30,7 +28,7 @@ def get_clue_numbers(grid):
 				increment_number = False
 	return {'across': across, 'down': down}
 
-def scrape_and_puz(min_year=1942, max_year=1993, overwrite=[False, False], puz_only = True):
+def scrape_and_puz(start_date=date(1942, 2, 15), end_date=date(1993, 11, 20), overwrite=[False, False], puz_only = True):
     h_path = 'nyt-cw/'
     p_path = 'nyt-puz/'
     fail_list = []
@@ -38,62 +36,81 @@ def scrape_and_puz(min_year=1942, max_year=1993, overwrite=[False, False], puz_o
         os.mkdir(h_path)
     if not os.path.exists(p_path):
         os.mkdir(p_path)
-    for y in range(min_year, max_year+1):
-        print(y)
-        h_path += f'{y}/'
-        p_path += f'{y}/'
-        if not os.path.exists(h_path):
-            os.mkdir(h_path)
-        if not os.path.exists(p_path):
-            os.mkdir(p_path)
-        for m in range(1, 13):
+
+    offset = 1
+    daily_date = date(1950, 9, 10) # date NYT switched from weekly Sunday puzzles to daily puzzles
+    if start_date < daily_date:
+        offset = 6-start_date.weekday()
+        working_date = start_date + timedelta(days=offset)
+        if working_date != daily_date:
+            offset = 7
+
+    h_path += working_date.strftime('%Y/%m/')
+    p_path += working_date.strftime('%Y/%m/')
+    
+    while working_date <= end_date:
+        if working_date == daily_date:
+            offset = 1
+        y, m, d = working_date.year, working_date.month, working_date.day
+        if (m, d) == (1, 1) and working_date != start_date:
+            h_path = h_path[:-8]
+            p_path = p_path[:-8]
+            h_path += f'{y}/{m:0>2}/'
+            p_path += f'{y}/{m:0>2}/'
+            if not os.path.exists(h_path):
+                os.mkdir(h_path)
+            if not os.path.exists(p_path):
+                os.mkdir(p_path)
+                
+        elif d == 1:
+            h_path = h_path[:-3]
+            p_path = p_path[:-3]
             h_path += f'{m:0>2}/'
             p_path += f'{m:0>2}/'
             if not os.path.exists(h_path):
                 os.mkdir(h_path)    
             if not os.path.exists(p_path):
                 os.mkdir(p_path)    
-            for d in range(1, days[m]+1):
-                filename = h_path+f'{months[m]}{d:0>2}{y%100:0>2}.html'
-                p_name = p_path+f'{months[m]}{d:0>2}{y%100:0>2}.puz'
-                if os.path.exists(filename) and not overwrite[0]:
-                    with open(filename, 'r') as f:
-                        text = f.read()
-                    if not os.path.exists(p_name) or overwrite[1]:
-                        try:
-                            build_puz(parse(filename), p_name)
-                        except (ValueError, AttributeError, IndexError):
-                            print(f'{filename} did not work')
-                    continue
-                if puz_only:
-                    continue
-                print(filename)
-                URL = f'https://www.xwordinfo.com/PS?date={m}/{d}/{y}'
-                start = time.time()
-                page = requests.get(URL)
-                delay = time.time() - start
-    #            print(delay)
-                time.sleep(random.uniform(2, 5) * delay)
-                if 'No valid puzzle' in page.text  \
-                   or 'Puzzles after September 3, 2023 are not available' in page.text \
-                   or 'Log in to your XWord Info account' in page.text \
-                   or 'not yet available' in page.text \
-                   or ("Sunday, February 15, 1942" in page.text and (m, d, y) != (2, 15, 1942)): # don't know why it's pulling in the  first ever puzzle (2/15/42) sometimes, but it is
-                    print('DNE')
-                    continue
-                with open(filename, 'w') as file:
-                    file.write(page.text)
-                    #print('saved')
+
+        filename = h_path + working_date.strftime('%b%d%y.html')
+        p_name = p_path + working_date.strftime('%b%d%y.puz')
+        if os.path.exists(filename) and not overwrite[0]:
+            with open(filename, 'r') as f:
+                text = f.read()
+            if not os.path.exists(p_name) or overwrite[1]:
                 try:
                     build_puz(parse(filename), p_name)
                 except (ValueError, AttributeError, IndexError):
-                    print(filename)
-                    fail_list.append(filename)
-                #print('puz')
-            h_path = h_path[:-3]
-            p_path = p_path[:-3]
-        h_path = h_path[:-5]
-        p_path = p_path[:-5]
+                    print(f'{filename} did not work')
+            working_date += timedelta(days=offset)
+            continue
+        if puz_only:
+            working_date += timedelta(days=offset)
+            continue
+        URL = f'https://www.xwordinfo.com/PS?date={m}/{d}/{y}'
+        start = time.time()
+        page = requests.get(URL)
+        delay = time.time() - start
+        time.sleep(random.uniform(2, 5) * delay)
+
+        if 'not yet available' in page.text:
+            return        
+        if 'No valid puzzle' in page.text  \
+           or 'are not available' in page.text \
+           or 'Log in to your XWord Info account' in page.text \
+           or ("Sunday, February 15, 1942" in page.text and (m, d, y) != (2, 15, 1942)): # don't know why it's pulling in the  first ever puzzle sometimes, but it is
+            print(f'{filename} DNE')
+            working_date += timedelta(days=offset)
+            continue
+        with open(filename, 'w') as file:
+            file.write(page.text)
+            #print('saved')
+        try:
+            build_puz(parse(filename), p_name)
+        except (ValueError, AttributeError, IndexError):
+            print(filename)
+            fail_list.append(filename)
+        working_date += timedelta(days=offset)
     return fail_list
 
 
@@ -120,7 +137,7 @@ def parse(filename):
                         '&#9899;':'[black dot]', '\u2639':':(', '&#x1F602;':'[crying laughing emoji]', '\U0001f602':'[crying laughing emoji]',
                         '\u03a3':'[sigma]', '&rarr;':'->', '&larr;':'<-', '&flat;':'b', '&#x1f913;':'[smiley face with glasses]', '&cup;':'[union]',
                         '&cap;':'[intersection]', '&#10004;':'[check]', '&check;':'[check]', '&#x2713;':'[check]', '&uarr;':'^', '&darr;':'v',
-                        '&Theta;':'[Theta]', '&radic;':'[radical]'}
+                        '&Theta;':'[Theta]', '&radic;':'[radical]', '\u03c1':'p'}
         for k, v in replacements.items():
             text = text.replace(k, v)
         soup = BeautifulSoup(text, "html.parser")
@@ -387,8 +404,8 @@ def build_puz(components, save_to=None, verbose=False):
     temp = checksum(0x2c, 8+size*2, 0, output)
     output[:2] = checksum(0, len(partial_board), int.from_bytes(temp, byteorder="little"), partial_board)
     
-    with open(save_to, 'wb') as file: # note that save_to includes the directory structure
+    with open(save_to, 'wb') as file: # note that 'save_to' includes the directory structure
         file.write(output)
     return(output, partial_board)
 
-fails = scrape_and_puz(2023, 2024, overwrite = [False, False], puz_only = False)
+fails = scrape_and_puz(date(2023,1,1), date(2024,1,1), overwrite = [False, False], puz_only = False)
