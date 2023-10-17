@@ -29,14 +29,6 @@ def get_clue_numbers(grid):
 	return {'across': across, 'down': down}
 
 def scrape_and_puz(start_date=date(1942, 2, 15), end_date=date(1993, 11, 20), overwrite=[False, False], puz_only = True):
-    h_path = 'nyt-cw/'
-    p_path = 'nyt-puz/'
-    fail_list = []
-    if not os.path.exists(h_path):
-        os.mkdir(h_path)
-    if not os.path.exists(p_path):
-        os.mkdir(p_path)
-
     offset = 1
     daily_date = date(1950, 9, 10) # date NYT switched from weekly Sunday puzzles to daily puzzles
     if start_date < daily_date:
@@ -44,30 +36,54 @@ def scrape_and_puz(start_date=date(1942, 2, 15), end_date=date(1993, 11, 20), ov
         working_date = start_date + timedelta(days=offset)
         if working_date != daily_date:
             offset = 7
-
-    h_path += working_date.strftime('%Y/%m/')
-    p_path += working_date.strftime('%Y/%m/')
+    else:
+        working_date = start_date
     
+    h_path = 'nyt-cw/'
+    p_path = 'nyt-puz/'
+    fail_list = []
+    if not puz_only and not os.path.exists(h_path):
+        os.mkdir(h_path)
+    if not os.path.exists(p_path):
+        os.mkdir(p_path)
+    h_path += working_date.strftime('%Y/')
+    p_path += working_date.strftime('%Y/')
+    if not puz_only and not os.path.exists(h_path):
+        os.mkdir(h_path)
+    if not os.path.exists(p_path):
+        os.mkdir(p_path)
+    h_path += working_date.strftime('%m/')
+    p_path += working_date.strftime('%m/')
+    if not puz_only and not os.path.exists(h_path):
+        os.mkdir(h_path)
+    if not os.path.exists(p_path):
+        os.mkdir(p_path)
+
     while working_date <= end_date:
         if working_date == daily_date:
             offset = 1
         y, m, d = working_date.year, working_date.month, working_date.day
         if (m, d) == (1, 1) and working_date != start_date:
             h_path = h_path[:-8]
+            h_path += f'{y}/'
             p_path = p_path[:-8]
-            h_path += f'{y}/{m:0>2}/'
-            p_path += f'{y}/{m:0>2}/'
-            if not os.path.exists(h_path):
+            p_path += f'{y}/'
+            if not puz_only and not os.path.exists(h_path):
                 os.mkdir(h_path)
             if not os.path.exists(p_path):
                 os.mkdir(p_path)
-                
+            h_path += f'{m:0>2}/'
+            p_path += f'{m:0>2}/'
+            if not puz_only and not os.path.exists(h_path):
+                os.mkdir(h_path)
+            if not os.path.exists(p_path):
+                os.mkdir(p_path)
         elif d == 1:
             h_path = h_path[:-3]
             p_path = p_path[:-3]
             h_path += f'{m:0>2}/'
             p_path += f'{m:0>2}/'
-            if not os.path.exists(h_path):
+            if not puz_only and not os.path.exists(h_path):
                 os.mkdir(h_path)    
             if not os.path.exists(p_path):
                 os.mkdir(p_path)    
@@ -79,12 +95,9 @@ def scrape_and_puz(start_date=date(1942, 2, 15), end_date=date(1993, 11, 20), ov
                 text = f.read()
             if not os.path.exists(p_name) or overwrite[1]:
                 try:
-                    build_puz(parse(filename), p_name)
+                    build_puz(parse(filename, text), p_name)
                 except (ValueError, AttributeError, IndexError):
                     print(f'{filename} did not work')
-            working_date += timedelta(days=offset)
-            continue
-        if puz_only:
             working_date += timedelta(days=offset)
             continue
         URL = f'https://www.xwordinfo.com/PS?date={m}/{d}/{y}'
@@ -102,11 +115,11 @@ def scrape_and_puz(start_date=date(1942, 2, 15), end_date=date(1993, 11, 20), ov
             print(f'{filename} DNE')
             working_date += timedelta(days=offset)
             continue
-        with open(filename, 'w') as file:
-            file.write(page.text)
-            #print('saved')
+        if not puz_only:
+            with open(filename, 'w') as file:
+                file.write(page.text)
         try:
-            build_puz(parse(filename), p_name)
+            build_puz(parse(filename, page.text), p_name)
         except (ValueError, AttributeError, IndexError):
             print(filename)
             fail_list.append(filename)
@@ -124,23 +137,24 @@ def checksum(start_bit, length, initial, array):
         cksum += array[start_bit + i]
     return cksum.to_bytes(2, 'little')
 
-sample = bytearray(b'\x15\x15\x96\x00\x01\x00\x00\x00')
-
-def parse(filename):
-    with open(filename, 'r') as file:
-        text = file.read()
-        replacements = {'\x95':'\xef', '\x87':'‡', '&#x1F497;':'[heart]', '&hearts;':'[heart]', '\u2764':'[heart]', '\u2665':'[heart]', '\ufe0f':'',
-                        '&diams;':'[diamond]', '\u2666':'[diamond]', '&spades;':'[spade]', '\u2660':'[spade]', '&clubs;':'[club]', '\u2663':'[club]',
-                        '\x82':'\xe2', '\x92':'?', '':'/', '':'\xe9', '&pi;':'[pi]', 'π':'[pi]', '&#9794;':'[male]', '&#9792;':'[female]',
-                        '&Omega;':'[omega]', '&Sigma;':'[sigma]', '\u010d':'c', '\u02bb':"'", '∨':'||', '∧':'&', '¬':'~', '&sim;':'~', 'Đ':'D', 'ặ':'a',
-                        'ắ':'a', '→':'->', 'ř':'r', '&#128308;':'[red dot]', '&#128993;':'[yellow dot]', '&#128994;':'[green dot]', '&#128309;':'[blue dot]',
-                        '&#9899;':'[black dot]', '\u2639':':(', '&#x1F602;':'[crying laughing emoji]', '\U0001f602':'[crying laughing emoji]',
-                        '\u03a3':'[sigma]', '&rarr;':'->', '&larr;':'<-', '&flat;':'b', '&#x1f913;':'[smiley face with glasses]', '&cup;':'[union]',
-                        '&cap;':'[intersection]', '&#10004;':'[check]', '&check;':'[check]', '&#x2713;':'[check]', '&uarr;':'^', '&darr;':'v',
-                        '&Theta;':'[Theta]', '&radic;':'[radical]', '\u03c1':'p'}
-        for k, v in replacements.items():
-            text = text.replace(k, v)
-        soup = BeautifulSoup(text, "html.parser")
+def parse(filename, full_text = None):
+    if not full_text:
+        with open(filename, 'r') as file:
+            text = file.read()
+    else:
+        text = full_text
+    replacements = {'\x95':'\xef', '\x87':'‡', '&#x1F497;':'[heart]', '&hearts;':'[heart]', '\u2764':'[heart]', '\u2665':'[heart]', '\ufe0f':'',
+                    '&diams;':'[diamond]', '\u2666':'[diamond]', '&spades;':'[spade]', '\u2660':'[spade]', '&clubs;':'[club]', '\u2663':'[club]',
+                    '\x82':'\xe2', '\x92':'?', '':'/', '':'\xe9', '&pi;':'[pi]', 'π':'[pi]', '&#9794;':'[male]', '&#9792;':'[female]',
+                    '&Omega;':'[omega]', '&Sigma;':'[sigma]', '\u010d':'c', '\u02bb':"'", '∨':'||', '∧':'&', '¬':'~', '&sim;':'~', 'Đ':'D', 'ặ':'a',
+                    'ắ':'a', '→':'->', 'ř':'r', '&#128308;':'[red dot]', '&#128993;':'[yellow dot]', '&#128994;':'[green dot]', '&#128309;':'[blue dot]',
+                    '&#9899;':'[black dot]', '\u2639':':(', '&#x1F602;':'[crying laughing emoji]', '\U0001f602':'[crying laughing emoji]',
+                    '\u03a3':'[sigma]', '&rarr;':'->', '&larr;':'<-', '&flat;':'b', '&#x1f913;':'[smiley face with glasses]', '&cup;':'[union]',
+                    '&cap;':'[intersection]', '&#10004;':'[check]', '&check;':'[check]', '&#x2713;':'[check]', '&uarr;':'^', '&darr;':'v',
+                    '&Theta;':'[Theta]', '&radic;':'[radical]', '\u03c1':'p'}
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    soup = BeautifulSoup(text, "html.parser")
 
     components = {'filename': filename[:filename.rfind('.')]}
 
@@ -155,7 +169,7 @@ def parse(filename):
         if i % components['width'] == 0:
             if i != 0:
                 grid.append(row)
-            row = '' # separating rows makes grids more human-readable, for debugging
+            row = ''
         cl = square.get("class") or 'None'
         if cl[0] == "black" or cl[0] == "shape":
             row += '.'
@@ -408,4 +422,4 @@ def build_puz(components, save_to=None, verbose=False):
         file.write(output)
     return(output, partial_board)
 
-fails = scrape_and_puz(date(2023,1,1), date(2024,1,1), overwrite = [False, False], puz_only = False)
+fails = scrape_and_puz(date(2023,10,8), date(2023,11,1), overwrite = [False, False], puz_only = False)
