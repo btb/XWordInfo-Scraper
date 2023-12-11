@@ -422,4 +422,4 @@ def build_puz(components, save_to=None, verbose=False):
         file.write(output)
     return(output, partial_board)
 
-fails = scrape_and_puz(date(2023,10,8), date(2023,11,1), overwrite = [False, False], puz_only = False)
+fails = scrape_and_puz(date(1942,2,15), date(1993,11,20), overwrite = [False, False], puz_only = False)
