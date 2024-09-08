@@ -63,7 +63,7 @@ def scrape_and_puz(start_date=date(1942, 2, 15), end_date=date(1993, 11, 20), ov
         if working_date == daily_date:
             offset = 1
         y, m, d = working_date.year, working_date.month, working_date.day
-        if (m, d) == (1, 1) and working_date != start_date:
+        if working_date <= daily_date or ((m, d) == (1, 1) and working_date != start_date):
             h_path = h_path[:-8]
             h_path += f'{y}/'
             p_path = p_path[:-8]
