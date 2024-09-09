@@ -151,7 +151,8 @@ def parse(filename, full_text = None):
                     '&#9899;':'[black dot]', '\u2639':':(', '&#x1F602;':'[crying laughing emoji]', '\U0001f602':'[crying laughing emoji]',
                     '\u03a3':'[sigma]', '&rarr;':'->', '&larr;':'<-', '&flat;':'b', '&#x1f913;':'[smiley face with glasses]', '&cup;':'[union]',
                     '&cap;':'[intersection]', '&#10004;':'[check]', '&check;':'[check]', '&#x2713;':'[check]', '&uarr;':'^', '&darr;':'v',
-                    '&Theta;':'[Theta]', '&radic;':'[radical]', '\u03c1':'p'}
+                    '&Theta;':'[Theta]', '&radic;':'[radical]', '\u03c1':'p', '&#x261c;':'[left pointing hand]', '&#x261e;':'[right pointing hand]',
+                    '&#601;':'[upside-down e]'}
     for k, v in replacements.items():
         text = text.replace(k, v)
     soup = BeautifulSoup(text, "html.parser")
