@@ -336,7 +336,7 @@ def build_puz(components, save_to=None, verbose=False):
     ext = bytearray(size)
     for i in components['circled']:
         ext[i] = 0x80
-    pobj.extensions[b'GEXT'] = bytes(ext)
+    pobj.extensions[puz.Extensions.Markup] = bytes(ext)
         
     if components['rebuses'] != {}:
         # GRBS ("grid rebus", tells the rebus table which squares each rebus goes in)
@@ -346,13 +346,13 @@ def build_puz(components, save_to=None, verbose=False):
         for i, r in enumerate(rebus_table):
             for j in rebuses[r]:
                 ext[j] = i+2 # one more than index, normally 1-indexed
-        pobj.extensions[b'GRBS'] = bytes(ext)
+        pobj.extensions[puz.Extensions.Rebus] = bytes(ext)
 
         # RTBL ("rebus table", indexes each rebus square)
         ext = bytearray()
         for i, r in enumerate(rebus_table):
             ext += bytes(f"{' '*(i<10)}{i+1}:{r};", encoding=pobj.encoding)
-        pobj.extensions[b'RTBL'] = bytes(ext)
+        pobj.extensions[puz.Extensions.RebusSolutions] = bytes(ext)
 
     pobj.unk2 = b'  RBJ III   ' # no idea what this is, but it seems to be consistent across NYT puzzles
 
